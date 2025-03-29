@@ -27,6 +27,7 @@ impl Display for Error {
 
 impl serde::de::Error for Error {
     fn custom<T: Display>(msg: T) -> Self {
+        println!("{msg}");
         Error::Unknown
     }
 }
@@ -223,9 +224,10 @@ impl<'a, 'de> Deserializer<'de> for PgCol<'a> {
             }
 
             #[cfg(feature = "serde-json")]
-            Type::JSONB | Type::JSON => {
-                visitor.visit_bytes(FromSql::from_sql(&self.ty, &self.raw).unwrap())
-            }
+            Type::JSONB | Type::JSON => serde_json::Value::from_sql(&self.ty, &self.raw)
+                .unwrap()
+                .deserialize_any(visitor)
+                .map_err(|_| Error::Unknown),
 
             #[cfg(feature = "uuid")]
             Type::UUID => visitor.visit_bytes(FromSql::from_sql(&self.ty, &self.raw).unwrap()),
