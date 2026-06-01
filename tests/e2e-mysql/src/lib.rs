@@ -21,8 +21,18 @@ mod tests {
     }
 
     fn base_url() -> String {
-        std::env::var("MYSQL_URL")
-            .unwrap_or_else(|_| "mysql://root@localhost".to_string())
+        let url = std::env::var("MYSQL_URL")
+            .unwrap_or_else(|_| "mysql://root@localhost".to_string());
+        url.trim_end_matches('/').to_string()
+    }
+
+    fn strip_database(url: &str) -> String {
+        let scheme_end = url.find("://").map(|i| i + 3).unwrap_or(0);
+        let rest = &url[scheme_end..];
+        match rest.rfind('/') {
+            Some(i) => url[..scheme_end + i].to_string(),
+            None => url.to_string(),
+        }
     }
 
     struct TestDb {
@@ -33,7 +43,8 @@ mod tests {
     impl TestDb {
         async fn new(test_name: &str) -> Self {
             let name = format!("esql_test_{test_name}");
-            let admin = mysql_async::Pool::new(base_url().as_str());
+            let admin_url = strip_database(&base_url());
+            let admin = mysql_async::Pool::new(admin_url.as_str());
             let mut conn = admin.get_conn().await.unwrap();
             conn.query_drop(format!("DROP DATABASE IF EXISTS {name}"))
                 .await
@@ -44,7 +55,7 @@ mod tests {
             drop(conn);
             admin.disconnect().await.unwrap();
 
-            let url = format!("{}/{name}", base_url());
+            let url = format!("{admin_url}/{name}");
             let pool = mysql_async::Pool::new(url.as_str());
 
             Self { name, pool }
@@ -54,7 +65,7 @@ mod tests {
             let db = Self::new(test_name).await;
             let mut conn = db.pool.get_conn().await.unwrap();
             conn.query_drop(
-                "CREATE TABLE IF NOT EXISTS users (
+                "CREATE TABLE users (
                     id      BIGINT PRIMARY KEY,
                     name    TEXT NOT NULL,
                     active  BOOLEAN NOT NULL DEFAULT TRUE
@@ -66,11 +77,13 @@ mod tests {
         }
 
         async fn cleanup(self) {
+            let name = self.name.clone();
             self.pool.disconnect().await.unwrap();
-            let admin = mysql_async::Pool::new(base_url().as_str());
+            let admin_url = strip_database(&base_url());
+            let admin = mysql_async::Pool::new(admin_url.as_str());
             let mut conn = admin.get_conn().await.unwrap();
             let _ = conn
-                .query_drop(format!("DROP DATABASE IF EXISTS {}", self.name))
+                .query_drop(format!("DROP DATABASE IF EXISTS {name}"))
                 .await;
             drop(conn);
             admin.disconnect().await.unwrap();
