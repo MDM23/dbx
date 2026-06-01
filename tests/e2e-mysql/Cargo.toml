@@ -1,0 +1,11 @@
+[package]
+name = "e2e-mysql"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish = false
+
+[dependencies]
+esql = { path = "../..", features = ["mysql", "migrate"] }
+mysql_async = "0.36"
+tokio = { version = "1", features = ["full"] }

@@ -5,6 +5,8 @@ members = [
 	"crates/migrate",
 	"examples/drivers",
 	"examples/pools",
+	"tests/e2e-mysql",
+	"tests/e2e-postgres",
 ]
 
 [workspace.package]

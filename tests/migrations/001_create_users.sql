@@ -1,0 +1,5 @@
+CREATE TABLE users (
+    id      BIGINT PRIMARY KEY,
+    name    TEXT NOT NULL,
+    active  BOOLEAN NOT NULL DEFAULT TRUE
+)

@@ -1,0 +1,11 @@
+[package]
+name = "e2e-postgres"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish = false
+
+[dependencies]
+esql = { path = "../..", features = ["postgres", "migrate"] }
+tokio = { version = "1", features = ["full"] }
+tokio-postgres = "0.7"

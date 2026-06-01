@@ -354,6 +354,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "e2e-mysql"
+version = "0.2.2"
+dependencies = [
+ "esql",
+ "mysql_async",
+ "tokio",
+]
+
+[[package]]
+name = "e2e-postgres"
+version = "0.2.2"
+dependencies = [
+ "esql",
+ "tokio",
+ "tokio-postgres",
+]
+
+[[package]]
 name = "equivalent"
 version = "1.0.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
