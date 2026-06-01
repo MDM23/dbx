@@ -54,7 +54,7 @@ mod tests {
             let db = Self::new(test_name).await;
             let mut conn = db.pool.get_conn().await.unwrap();
             conn.query_drop(
-                "CREATE TABLE users (
+                "CREATE TABLE IF NOT EXISTS users (
                     id      BIGINT PRIMARY KEY,
                     name    TEXT NOT NULL,
                     active  BOOLEAN NOT NULL DEFAULT TRUE

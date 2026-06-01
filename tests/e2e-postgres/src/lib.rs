@@ -59,7 +59,7 @@ mod tests {
             let db = Self::new(test_name).await;
             db.client
                 .execute(
-                    "CREATE TABLE users (
+                    "CREATE TABLE IF NOT EXISTS users (
                         id      BIGINT PRIMARY KEY,
                         name    TEXT NOT NULL,
                         active  BOOLEAN NOT NULL DEFAULT TRUE
@@ -102,7 +102,7 @@ mod tests {
             .client
             .esql()
             .query(
-                "SELECT table_name FROM information_schema.tables \
+                "SELECT table_name::text FROM information_schema.tables \
                  WHERE table_schema = 'public' AND table_name IN ('migrations', 'users') \
                  ORDER BY table_name",
             )
