@@ -200,6 +200,7 @@ mod tests {
             .await
             .unwrap();
         tx.commit().await.unwrap();
+        drop(conn);
 
         let name: String = db
             .pool
@@ -224,6 +225,7 @@ mod tests {
             .await
             .unwrap();
         tx.rollback().await.unwrap();
+        drop(conn);
 
         let count: i64 = db
             .pool
