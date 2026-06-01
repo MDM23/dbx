@@ -1,0 +1,18 @@
+[package]
+name = "esql-macros"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[lib]
+proc-macro = true
+
+[features]
+derive = []
+migrate = [ "dep:esql-migrate" ]
+
+[dependencies]
+esql-migrate = { path = "../migrate", optional = true }
+proc-macro2 = "1.0"
+quote = "1.0.42"
+syn = { version = "2.0", features = ["full"]}

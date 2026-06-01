@@ -1,0 +1,11 @@
+[package]
+name = "esql-migrate"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+
+[dependencies]
+esql-core = { path = "../core", features = ["migrate"] }
+base16ct = { version = "0.3.0", features = ["alloc"] }
+regex = "1.12.2"
+sha2 = "0.11.0-rc.3"

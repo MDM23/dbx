@@ -1,0 +1,14 @@
+[package]
+name = "example-pools"
+edition.workspace = true
+license.workspace = true
+version.workspace = true
+publish = false
+
+[dependencies]
+esql = { path = "../..", features = ["postgres"] }
+bb8 = "0.9"
+bb8-postgres = "0.9"
+deadpool-postgres = "0.14"
+tokio = { version = "1.48.0", features = ["full"] }
+tokio-postgres = "0.7.15"
