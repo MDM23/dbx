@@ -12,6 +12,11 @@
       );
 
       devShells.x86_64-linux.default = pkgs.mkShell {
+        # TODO: Use another env var
+        shellHook = ''
+          export CLAUDE_CONFIG_DIR="$HOME/.claude-personal"
+        '';
+
         buildInputs = [
           pkgs.postgresql
           pkgs.mysql84

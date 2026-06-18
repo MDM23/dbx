@@ -1,23 +1,14 @@
 #[cfg(test)]
 mod tests {
-    use esql::{Esql, FromRow, FromRowError, Query, Row};
+    use esql::{Esql, FromRow, Query};
     use mysql_async::prelude::Queryable;
 
     #[allow(dead_code)]
+    #[derive(FromRow)]
     struct User {
         id: i64,
         name: String,
         active: bool,
-    }
-
-    impl FromRow for User {
-        fn from_row<R: Row>(row: &R) -> Result<Self, FromRowError> {
-            Ok(User {
-                id: row.try_get("id")?,
-                name: row.try_get("name")?,
-                active: row.try_get("active")?,
-            })
-        }
     }
 
     fn base_url() -> String {

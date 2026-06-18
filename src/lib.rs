@@ -8,6 +8,9 @@ pub use esql_core::{
     Error, Esql, EsqlDriver, FromRow, FromRowError, FromValue, Query, Row, Trusted, Value,
 };
 
+#[cfg(feature = "derive")]
+pub use esql_macros::FromRow;
+
 #[cfg(feature = "migrate")]
 pub mod migrate {
     pub use esql_macros::embed_migrations;

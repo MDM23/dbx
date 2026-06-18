@@ -6,6 +6,6 @@ version.workspace = true
 publish = false
 
 [dependencies]
-esql = { path = "../..", features = ["mysql", "migrate"] }
+esql = { path = "../..", features = ["mysql", "migrate", "derive"] }
 mysql_async = "0.36"
 tokio = { version = "1", features = ["full"] }

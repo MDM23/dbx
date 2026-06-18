@@ -49,8 +49,33 @@ pub fn embed_migrations(input: TokenStream) -> TokenStream {
 
 #[cfg(feature = "derive")]
 #[proc_macro_derive(FromRow)]
-pub fn derive_from_row(tok: TokenStream) -> TokenStream {
-    let mut tok = tok.into_iter();
-    let tok = tok.next();
-    todo!("{:?}", tok)
+pub fn derive_from_row(input: TokenStream) -> TokenStream {
+    let input = syn::parse_macro_input!(input as syn::DeriveInput);
+    let name = &input.ident;
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    let fields = match &input.data {
+        syn::Data::Struct(data) => match &data.fields {
+            syn::Fields::Named(fields) => &fields.named,
+            _ => panic!("FromRow can only be derived for structs with named fields"),
+        },
+        _ => panic!("FromRow can only be derived for structs"),
+    };
+
+    let field_extractions = fields.iter().map(|f| {
+        let ident = f.ident.as_ref().unwrap();
+        let column = ident.to_string();
+        quote! { #ident: row.try_get(#column)? }
+    });
+
+    quote! {
+        impl #impl_generics esql::FromRow for #name #ty_generics #where_clause {
+            fn from_row<R: esql::Row>(row: &R) -> Result<Self, esql::FromRowError> {
+                Ok(Self {
+                    #(#field_extractions),*
+                })
+            }
+        }
+    }
+    .into()
 }
