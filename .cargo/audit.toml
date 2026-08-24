@@ -1,0 +1,19 @@
+[advisories]
+# RUSTSEC-2026-0235 (rkyv < 0.8.17, out-of-bounds reads on Rc/Arc archives).
+#
+# `rkyv` is an optional dependency of `rust_decimal` that we never enable: the
+# workspace takes it with `default-features = false, features = ["std"]`, and
+# nothing turns the `rkyv` feature back on. It is absent from the build graph
+# under every feature and target we can select:
+#
+#   $ cargo tree --all-features --target all -e normal,build,dev | grep rkyv
+#   (no matches)
+#
+# It appears in Cargo.lock only because cargo records optional dependencies
+# there regardless of feature selection, and cargo-audit reads the lockfile
+# rather than the build graph.
+#
+# Drop this entry once `rust_decimal` moves to `rkyv >= 0.8.17`. As of
+# rust_decimal 1.42.1 it pins `^0.7.46`, so no lockfile update can reach the
+# fixed version.
+ignore = ["RUSTSEC-2026-0235"]
