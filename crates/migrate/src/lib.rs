@@ -138,15 +138,14 @@ impl Migrator {
     where
         D: Esql,
     {
-        Ok(db
-            .query(
-                r#"
-                    SELECT version, checksum
-                    FROM migrations
-                    ORDER BY version
-                "#,
-            )
-            .await?)
+        db.query(
+            r#"
+                SELECT version, checksum
+                FROM migrations
+                ORDER BY version
+            "#,
+        )
+        .await
     }
 
     async fn apply_migration<D>(

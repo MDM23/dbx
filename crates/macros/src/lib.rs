@@ -9,7 +9,7 @@ pub fn embed_migrations(input: TokenStream) -> TokenStream {
     use syn::LitStr;
 
     let dir = syn::parse_macro_input!(input as LitStr);
-    let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap()).join(&dir.value());
+    let path = Path::new(&env::var("CARGO_MANIFEST_DIR").unwrap()).join(dir.value());
 
     let mut migrations: Vec<Migration> = read_dir(path)
         .unwrap()

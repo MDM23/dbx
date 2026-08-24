@@ -6,6 +6,6 @@ version.workspace = true
 publish = false
 
 [dependencies]
-esql = { path = "../..", features = ["postgres", "migrate", "derive"] }
-tokio = { version = "1", features = ["full"] }
-tokio-postgres = "0.7"
+esql = { workspace = true, features = ["postgres", "migrate", "derive"] }
+tokio = { workspace = true }
+tokio-postgres = { workspace = true }

@@ -7,6 +7,37 @@ on:
     branches: [main]
 
 jobs:
+  clippy:
+    name: Clippy
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+      - uses: Swatinem/rust-cache@v2
+
+      # `mysql` and `postgres` are mutually exclusive, so each driver gets its
+      # own pass instead of a single --all-features run.
+      - name: Clippy (postgres features)
+        run: cargo clippy -p esql -p esql-core -p esql-migrate -p example-pools -p e2e-postgres --all-targets --features postgres,migrate -- -D warnings
+
+      - name: Clippy (mysql features)
+        run: cargo clippy -p esql -p esql-core -p esql-migrate -p example-drivers -p e2e-mysql --all-targets --features mysql,migrate -- -D warnings
+
+  audit:
+    name: Audit
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@cargo-audit
+
+      # Against the lockfile, so what is checked is what is built.
+      - name: Audit
+        run: cargo audit
+
   test:
     name: Unit tests
     runs-on: ubuntu-latest

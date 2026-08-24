@@ -1,3 +1,7 @@
+// The trait returns `impl Future + '_`, which `async fn` cannot express for
+// the generic query without a `T: '_` bound.
+#![allow(clippy::manual_async_fn)]
+
 use futures_util::{StreamExt, TryStreamExt};
 use mysql_async::{Params, Pool, QueryWithParams, Transaction, prelude::Query as _};
 

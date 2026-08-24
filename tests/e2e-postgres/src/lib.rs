@@ -12,8 +12,7 @@ mod tests {
     }
 
     fn base_url() -> String {
-        std::env::var("POSTGRES_URL")
-            .unwrap_or_else(|_| "host=localhost user=postgres".to_string())
+        std::env::var("POSTGRES_URL").unwrap_or_else(|_| "host=localhost user=postgres".to_string())
     }
 
     async fn admin_client() -> tokio_postgres::Client {
@@ -75,7 +74,9 @@ mod tests {
                     .block_on(async {
                         let (c, conn) = tokio_postgres::connect(&base, NoTls).await.unwrap();
                         tokio::spawn(conn);
-                        let _ = c.execute(&format!("DROP DATABASE IF EXISTS {name}"), &[]).await;
+                        let _ = c
+                            .execute(&format!("DROP DATABASE IF EXISTS {name}"), &[])
+                            .await;
                     });
             })
             .join()
@@ -109,13 +110,23 @@ mod tests {
 
         db.client
             .esql()
-            .execute(("INSERT INTO users (id, name, active) VALUES (?, ?, ?)", 1i64, "Alice", true))
+            .execute((
+                "INSERT INTO users (id, name, active) VALUES (?, ?, ?)",
+                1i64,
+                "Alice",
+                true,
+            ))
             .await
             .unwrap();
 
         db.client
             .esql()
-            .execute(("INSERT INTO users (id, name, active) VALUES (?, ?, ?)", 2i64, "Bob", false))
+            .execute((
+                "INSERT INTO users (id, name, active) VALUES (?, ?, ?)",
+                2i64,
+                "Bob",
+                false,
+            ))
             .await
             .unwrap();
 
@@ -139,13 +150,23 @@ mod tests {
 
         db.client
             .esql()
-            .execute(("INSERT INTO users (id, name, active) VALUES (?, ?, ?)", 1i64, "Charlie", true))
+            .execute((
+                "INSERT INTO users (id, name, active) VALUES (?, ?, ?)",
+                1i64,
+                "Charlie",
+                true,
+            ))
             .await
             .unwrap();
 
         db.client
             .esql()
-            .execute(("INSERT INTO users (id, name, active) VALUES (?, ?, ?)", 2i64, "Diana", true))
+            .execute((
+                "INSERT INTO users (id, name, active) VALUES (?, ?, ?)",
+                2i64,
+                "Diana",
+                true,
+            ))
             .await
             .unwrap();
 
@@ -163,7 +184,12 @@ mod tests {
 
         db.client
             .esql()
-            .execute(("INSERT INTO users (id, name, active) VALUES (?, ?, ?)", 1i64, "Eve", true))
+            .execute((
+                "INSERT INTO users (id, name, active) VALUES (?, ?, ?)",
+                1i64,
+                "Eve",
+                true,
+            ))
             .await
             .unwrap();
 
@@ -183,7 +209,12 @@ mod tests {
 
         let mut tx = db.client.transaction().await.unwrap();
         tx.esql()
-            .execute(("INSERT INTO users (id, name, active) VALUES (?, ?, ?)", 1i64, "Frank", true))
+            .execute((
+                "INSERT INTO users (id, name, active) VALUES (?, ?, ?)",
+                1i64,
+                "Frank",
+                true,
+            ))
             .await
             .unwrap();
         tx.commit().await.unwrap();
@@ -204,7 +235,12 @@ mod tests {
 
         let mut tx = db.client.transaction().await.unwrap();
         tx.esql()
-            .execute(("INSERT INTO users (id, name, active) VALUES (?, ?, ?)", 1i64, "Ghost", true))
+            .execute((
+                "INSERT INTO users (id, name, active) VALUES (?, ?, ?)",
+                1i64,
+                "Ghost",
+                true,
+            ))
             .await
             .unwrap();
         tx.rollback().await.unwrap();

@@ -34,7 +34,7 @@ pub(crate) enum Fragment<'a> {
     Param,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct Query<'a> {
     pub(crate) fragments: Vec<Fragment<'a>>,
     pub(crate) params: Vec<Value>,
@@ -112,7 +112,7 @@ impl<'a> Query<'a> {
         Query {
             params: query.params,
             fragments: iter::once(Fragment::Raw(Cow::Borrowed("(")))
-                .chain(query.fragments.into_iter())
+                .chain(query.fragments)
                 .chain(iter::once(Fragment::Raw(Cow::Borrowed(")"))))
                 .collect(),
         }

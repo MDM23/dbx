@@ -12,8 +12,8 @@ mod tests {
     }
 
     fn base_url() -> String {
-        let url = std::env::var("MYSQL_URL")
-            .unwrap_or_else(|_| "mysql://root@localhost".to_string());
+        let url =
+            std::env::var("MYSQL_URL").unwrap_or_else(|_| "mysql://root@localhost".to_string());
         url.trim_end_matches('/').to_string()
     }
 
@@ -108,13 +108,23 @@ mod tests {
 
         db.pool
             .esql()
-            .execute(("INSERT INTO users (id, name, active) VALUES (?, ?, ?)", 1i64, "Alice", true))
+            .execute((
+                "INSERT INTO users (id, name, active) VALUES (?, ?, ?)",
+                1i64,
+                "Alice",
+                true,
+            ))
             .await
             .unwrap();
 
         db.pool
             .esql()
-            .execute(("INSERT INTO users (id, name, active) VALUES (?, ?, ?)", 2i64, "Bob", false))
+            .execute((
+                "INSERT INTO users (id, name, active) VALUES (?, ?, ?)",
+                2i64,
+                "Bob",
+                false,
+            ))
             .await
             .unwrap();
 
@@ -139,13 +149,23 @@ mod tests {
 
         db.pool
             .esql()
-            .execute(("INSERT INTO users (id, name, active) VALUES (?, ?, ?)", 1i64, "Charlie", true))
+            .execute((
+                "INSERT INTO users (id, name, active) VALUES (?, ?, ?)",
+                1i64,
+                "Charlie",
+                true,
+            ))
             .await
             .unwrap();
 
         db.pool
             .esql()
-            .execute(("INSERT INTO users (id, name, active) VALUES (?, ?, ?)", 2i64, "Diana", true))
+            .execute((
+                "INSERT INTO users (id, name, active) VALUES (?, ?, ?)",
+                2i64,
+                "Diana",
+                true,
+            ))
             .await
             .unwrap();
 
@@ -164,7 +184,12 @@ mod tests {
 
         db.pool
             .esql()
-            .execute(("INSERT INTO users (id, name, active) VALUES (?, ?, ?)", 1i64, "Eve", true))
+            .execute((
+                "INSERT INTO users (id, name, active) VALUES (?, ?, ?)",
+                1i64,
+                "Eve",
+                true,
+            ))
             .await
             .unwrap();
 
@@ -184,10 +209,18 @@ mod tests {
         let mut db = TestDb::with_users_table("tx_commit").await;
 
         let mut conn = db.pool.get_conn().await.unwrap();
-        let mut tx = conn.start_transaction(mysql_async::TxOpts::new()).await.unwrap();
+        let mut tx = conn
+            .start_transaction(mysql_async::TxOpts::new())
+            .await
+            .unwrap();
 
         tx.esql()
-            .execute(("INSERT INTO users (id, name, active) VALUES (?, ?, ?)", 1i64, "Frank", true))
+            .execute((
+                "INSERT INTO users (id, name, active) VALUES (?, ?, ?)",
+                1i64,
+                "Frank",
+                true,
+            ))
             .await
             .unwrap();
         tx.commit().await.unwrap();
@@ -209,10 +242,18 @@ mod tests {
         let mut db = TestDb::with_users_table("tx_rollback").await;
 
         let mut conn = db.pool.get_conn().await.unwrap();
-        let mut tx = conn.start_transaction(mysql_async::TxOpts::new()).await.unwrap();
+        let mut tx = conn
+            .start_transaction(mysql_async::TxOpts::new())
+            .await
+            .unwrap();
 
         tx.esql()
-            .execute(("INSERT INTO users (id, name, active) VALUES (?, ?, ?)", 1i64, "Ghost", true))
+            .execute((
+                "INSERT INTO users (id, name, active) VALUES (?, ?, ?)",
+                1i64,
+                "Ghost",
+                true,
+            ))
             .await
             .unwrap();
         tx.rollback().await.unwrap();

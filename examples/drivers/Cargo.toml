@@ -11,7 +11,7 @@ mysql = ["esql/mysql", "dep:mysql_async"]
 postgres = ["esql/postgres", "dep:tokio-postgres"]
 
 [dependencies]
-esql = { path = "../..", features = ["derive", "migrate"] }
-mysql_async = { version = "0.36.1", optional = true }
-tokio = { version = "1.48.0", features = ["full"] }
-tokio-postgres = { version = "0.7.15", optional = true }
+esql = { workspace = true, features = ["derive", "migrate"] }
+mysql_async = { workspace = true, optional = true }
+tokio = { workspace = true }
+tokio-postgres = { workspace = true, optional = true }
