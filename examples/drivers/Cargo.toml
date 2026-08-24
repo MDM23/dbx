@@ -5,13 +5,8 @@ license.workspace = true
 version.workspace = true
 publish = false
 
-[features]
-default = ["mysql"]
-mysql = ["esql/mysql", "dep:mysql_async"]
-postgres = ["esql/postgres", "dep:tokio-postgres"]
-
 [dependencies]
-esql = { workspace = true, features = ["derive", "migrate"] }
-mysql_async = { workspace = true, optional = true }
+esql = { workspace = true, features = ["derive", "migrate", "mysql", "postgres"] }
+mysql_async = { workspace = true }
 tokio = { workspace = true }
-tokio-postgres = { workspace = true, optional = true }
+tokio-postgres = { workspace = true }

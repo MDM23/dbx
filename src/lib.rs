@@ -1,11 +1,6 @@
-#[cfg(all(feature = "mysql", feature = "postgres"))]
-compile_error!("Features `mysql` and `postgres` are mutually exclusive. Enable only one.");
-
-#[cfg(not(any(feature = "mysql", feature = "postgres")))]
-compile_error!("Either feature `mysql` or `postgres` must be enabled.");
-
 pub use esql_core::{
-    Error, Esql, EsqlDriver, FromRow, FromRowError, FromValue, Query, Row, Trusted, Value,
+    Dialect, Error, Esql, EsqlDriver, FromRow, FromRowError, FromValue, Query, Row, Trusted, Value,
+    dialect,
 };
 
 #[cfg(feature = "derive")]

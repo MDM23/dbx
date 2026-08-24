@@ -6,14 +6,21 @@ version.workspace = true
 
 [features]
 migrate = []
+# `rust_decimal` carries its own tokio-postgres impls, so the passthrough hangs
+# off `postgres` rather than off the type feature: cargo cannot express
+# "postgres AND with-rust_decimal-1" on a single feature.
 mysql = [ "dep:mysql_async" ]
-postgres = [ "dep:tokio-postgres" ]
+postgres = [ "dep:tokio-postgres", "rust_decimal?/db-tokio-postgres" ]
+with-rust_decimal-1 = [ "dep:rust_decimal" ]
+with-serde_json-1 = [ "dep:serde_json", "tokio-postgres?/with-serde_json-1" ]
 with-time-0_3 = [ "dep:time", "tokio-postgres?/with-time-0_3" ]
 with-uuid-1 = [ "dep:uuid", "tokio-postgres?/with-uuid-1" ]
 
 [dependencies]
 futures-util = { workspace = true }
 mysql_async = { workspace = true, optional = true }
+rust_decimal = { workspace = true, optional = true }
+serde_json = { workspace = true, optional = true }
 time = { workspace = true, optional = true }
 tokio-postgres = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }

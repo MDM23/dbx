@@ -1,4 +1,4 @@
-use crate::{Error, FromRowError, Query, Value};
+use crate::{Error, FromRowError, Query, Value, dialect::Dialect};
 
 #[cfg(feature = "mysql")]
 mod mysql;
@@ -15,6 +15,9 @@ pub struct EsqlDriver<'c, C: ?Sized>(pub(crate) &'c mut C);
 /// `execute`, `query`, and `first` methods.
 pub trait Esql {
     type Error;
+
+    /// How this connection spells parameter placeholders.
+    type Dialect: Dialect;
 
     /// Returns an [EsqlDriver] handle for this connection.
     fn esql(&mut self) -> EsqlDriver<'_, Self>;
@@ -60,7 +63,7 @@ impl<'c, C: Esql + ?Sized> EsqlDriver<'c, C> {
         &mut self,
         query: impl Into<Query<'q>>,
     ) -> impl Future<Output = Result<u64, Error<C::Error>>> + '_ {
-        let (sql, params) = query.into().build();
+        let (sql, params) = query.into().build::<C::Dialect>();
         self.0._esql_execute(sql, params)
     }
 
@@ -72,7 +75,7 @@ impl<'c, C: Esql + ?Sized> EsqlDriver<'c, C> {
     where
         T: FromRow,
     {
-        let (sql, params) = query.into().build();
+        let (sql, params) = query.into().build::<C::Dialect>();
         self.0._esql_query(sql, params)
     }
 
@@ -85,7 +88,7 @@ impl<'c, C: Esql + ?Sized> EsqlDriver<'c, C> {
     where
         T: FromRow,
     {
-        let (sql, params) = query.into().build();
+        let (sql, params) = query.into().build::<C::Dialect>();
         self.0._esql_first(sql, params)
     }
 }

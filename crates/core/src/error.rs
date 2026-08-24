@@ -3,6 +3,10 @@ pub enum Error<DriverError> {
     FromRow(FromRowError),
     Driver(DriverError),
 
+    /// A parameter whose type the target database has no representation for,
+    /// such as an array bound against MySQL.
+    UnsupportedParam(&'static str),
+
     #[cfg(feature = "migrate")]
     Migration(MigrationError),
 }
@@ -12,6 +16,7 @@ impl<T: std::fmt::Display> std::fmt::Display for Error<T> {
         match self {
             Self::FromRow(e) => write!(f, "{e}"),
             Self::Driver(e) => write!(f, "{e}"),
+            Self::UnsupportedParam(t) => write!(f, "driver cannot bind a parameter of type {t}"),
             #[cfg(feature = "migrate")]
             Self::Migration(e) => write!(f, "migration error in {}: {:?}", e.filename, e.error),
         }

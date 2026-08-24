@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 use std::iter;
 
-use crate::Value;
+use crate::{Value, dialect::Dialect};
 
 /// A wrapper certifying that the contained SQL string is safe to embed
 /// directly (i.e. not user-supplied input that needs parameterisation).
@@ -183,17 +183,14 @@ impl<'a> Query<'a> {
 ////////////////////////////////////////////////////////////////////////////////
 
 impl<'a> Query<'a> {
-    /// Build the query into a SQL string and a parameter vector.
+    /// Build the query into a SQL string and a parameter vector, spelling
+    /// placeholders the way `D` requires.
     ///
-    /// Placeholder format depends on the enabled driver feature:
-    /// - `postgres`: positional `$1`, `$2`, ...
-    /// - `mysql`: positional `?`
-    /// - no driver feature: positional `?` (default)
-    pub fn build(self) -> (String, Vec<Value>) {
+    /// The driver methods on [crate::EsqlDriver] pick `D` from the connection,
+    /// so this only needs naming directly when building SQL by hand.
+    pub fn build<D: Dialect>(self) -> (String, Vec<Value>) {
         let mut buffer = String::with_capacity(64);
-
-        #[cfg(feature = "postgres")]
-        let mut n = 1usize;
+        let mut index = 0usize;
 
         for frag in self.fragments {
             if !buffer.is_empty() {
@@ -202,14 +199,8 @@ impl<'a> Query<'a> {
 
             match frag {
                 Fragment::Param => {
-                    #[cfg(feature = "postgres")]
-                    {
-                        buffer.push('$');
-                        buffer.push_str(&n.to_string());
-                        n += 1;
-                    }
-                    #[cfg(not(feature = "postgres"))]
-                    buffer.push('?');
+                    index += 1;
+                    D::placeholder(index, &mut buffer);
                 }
                 Fragment::Raw(r) => buffer.push_str(&r),
             }
@@ -332,6 +323,7 @@ impl_from_tuple!(1: A1, 2: A2, 3: A3, 4: A4, 5: A5, 6: A6, 7: A7, 8: A8, 9: A9, 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::dialect::{MySql, Postgres};
 
     #[test]
     fn basic_query_parsing() {
@@ -343,7 +335,7 @@ mod tests {
 
         q1.push(("AND d != ?", 13.37f32));
 
-        let (sql, params) = q1.build();
+        let (sql, params) = q1.build::<Postgres>();
         assert_eq!(params.len(), 3);
         assert!(!sql.contains("hello?") || sql.contains("\"hello?\""));
     }
@@ -353,7 +345,7 @@ mod tests {
         let mut q2 = Query::from("SELECT * FROM users");
         q2.push_where(Query::in_("type", ["admin", "moderator"]));
 
-        let (sql, params) = q2.build();
+        let (sql, params) = q2.build::<Postgres>();
         assert_eq!(params.len(), 2);
         assert!(sql.contains("WHERE"));
         assert!(sql.contains("IN"));
@@ -362,7 +354,33 @@ mod tests {
     #[test]
     fn empty_in_clause() {
         let q = Query::in_("type", Vec::<String>::new());
-        let (sql, _) = q.build();
+        let (sql, _) = q.build::<Postgres>();
         assert!(sql.contains("1=0"));
+    }
+
+    /// The same query builds for either database. Before the dialect became a
+    /// value this was a cargo feature, so one binary could only ever produce
+    /// one of these two strings.
+    #[test]
+    fn one_query_builds_for_both_dialects() {
+        let build = || Query::from(("SELECT a WHERE b = ? AND c = ?", 1, 2));
+
+        let (pg, pg_params) = build().build::<Postgres>();
+        let (my, my_params) = build().build::<MySql>();
+
+        assert_eq!(pg, "SELECT a WHERE b = $1 AND c = $2");
+        assert_eq!(my, "SELECT a WHERE b = ? AND c = ?");
+        assert_eq!(pg_params.len(), 2);
+        assert_eq!(my_params.len(), 2);
+    }
+
+    #[test]
+    fn postgres_placeholders_count_from_one_across_pushes() {
+        let mut q = Query::from(("SELECT ?", 1));
+        q.push(("AND a = ?", 2));
+        q.push(("AND b = ?", 3));
+
+        let (sql, _) = q.build::<Postgres>();
+        assert_eq!(sql, "SELECT $1 AND a = $2 AND b = $3");
     }
 }

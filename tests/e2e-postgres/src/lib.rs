@@ -254,4 +254,212 @@ mod tests {
 
         assert_eq!(count, 0);
     }
+
+    #[derive(FromRow, PartialEq, Debug)]
+    struct Scalars {
+        c_bool: bool,
+        c_int2: i16,
+        c_int4: i32,
+        c_int8: i64,
+        c_float4: f32,
+        c_float8: f64,
+        c_numeric: rust_decimal::Decimal,
+        c_text: String,
+        c_varchar: String,
+        c_bytea: Vec<u8>,
+    }
+
+    #[derive(FromRow, PartialEq, Debug)]
+    struct Extended {
+        c_uuid: uuid::Uuid,
+        c_inet: std::net::IpAddr,
+        c_json: serde_json::Value,
+        c_jsonb: serde_json::Value,
+        c_date: time::Date,
+        c_time: time::Time,
+        c_ts: time::PrimitiveDateTime,
+        c_tstz: time::OffsetDateTime,
+    }
+
+    /// Binds each type as a parameter and reads it back out of the same
+    /// column, so both the `ToSql` and `FromSql` halves are covered.
+    #[tokio::test]
+    async fn scalar_types_round_trip() {
+        let mut db = TestDb::new("scalars").await;
+
+        db.client
+            .esql()
+            .execute(
+                "CREATE TABLE t (
+                    c_bool      BOOLEAN,
+                    c_int2      SMALLINT,
+                    c_int4      INTEGER,
+                    c_int8      BIGINT,
+                    c_float4    REAL,
+                    c_float8    DOUBLE PRECISION,
+                    c_numeric   NUMERIC(10,2),
+                    c_text      TEXT,
+                    c_varchar   VARCHAR(32),
+                    c_bytea     BYTEA
+                )",
+            )
+            .await
+            .unwrap();
+
+        let expected = Scalars {
+            c_bool: true,
+            c_int2: 7,
+            c_int4: 8,
+            c_int8: 9,
+            c_float4: 1.5,
+            c_float8: 2.5,
+            c_numeric: "10.25".parse().unwrap(),
+            c_text: "text".into(),
+            c_varchar: "varchar".into(),
+            c_bytea: vec![1, 2, 3],
+        };
+
+        db.client
+            .esql()
+            .execute((
+                "INSERT INTO t VALUES (?,?,?,?,?,?,?,?,?,?)",
+                expected.c_bool,
+                expected.c_int2,
+                expected.c_int4,
+                expected.c_int8,
+                expected.c_float4,
+                expected.c_float8,
+                expected.c_numeric,
+                expected.c_text.clone(),
+                expected.c_varchar.clone(),
+                expected.c_bytea.clone(),
+            ))
+            .await
+            .unwrap();
+
+        let actual: Scalars = db.client.esql().first("SELECT * FROM t").await.unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn extended_types_round_trip() {
+        let mut db = TestDb::new("extended").await;
+
+        db.client
+            .esql()
+            .execute(
+                "CREATE TABLE t (
+                    c_uuid      UUID,
+                    c_inet      INET,
+                    c_json      JSON,
+                    c_jsonb     JSONB,
+                    c_date      DATE,
+                    c_time      TIME,
+                    c_ts        TIMESTAMP,
+                    c_tstz      TIMESTAMPTZ
+                )",
+            )
+            .await
+            .unwrap();
+
+        let date = time::Date::from_calendar_date(2026, time::Month::August, 24).unwrap();
+        let naive = time::PrimitiveDateTime::new(date, time::Time::from_hms(13, 30, 0).unwrap());
+
+        let expected = Extended {
+            c_uuid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
+            c_inet: "192.168.1.1".parse().unwrap(),
+            c_json: serde_json::json!({ "a": 1 }),
+            c_jsonb: serde_json::json!({ "a": 1 }),
+            c_date: date,
+            c_time: time::Time::from_hms(13, 30, 0).unwrap(),
+            c_ts: naive,
+            c_tstz: naive.assume_utc(),
+        };
+
+        db.client
+            .esql()
+            .execute((
+                "INSERT INTO t VALUES (?,?,?,?,?,?,?,?)",
+                expected.c_uuid,
+                expected.c_inet,
+                expected.c_json.clone(),
+                expected.c_jsonb.clone(),
+                expected.c_date,
+                expected.c_time,
+                expected.c_ts,
+                expected.c_tstz,
+            ))
+            .await
+            .unwrap();
+
+        let actual: Extended = db.client.esql().first("SELECT * FROM t").await.unwrap();
+        assert_eq!(actual, expected);
+    }
+
+    #[tokio::test]
+    async fn arrays_round_trip() {
+        let mut db = TestDb::new("arrays").await;
+
+        db.client
+            .esql()
+            .execute("CREATE TABLE a (ints INTEGER[], texts TEXT[], nested INTEGER[][])")
+            .await
+            .unwrap();
+
+        db.client
+            .esql()
+            .execute((
+                "INSERT INTO a VALUES (?, ?, ?)",
+                vec![1i32, 2, 3],
+                vec!["x".to_string(), "y".to_string()],
+                Vec::<i32>::new(),
+            ))
+            .await
+            .unwrap();
+
+        let ints: Vec<i32> = db.client.esql().first("SELECT ints FROM a").await.unwrap();
+        assert_eq!(ints, vec![1, 2, 3]);
+
+        let texts: Vec<String> = db.client.esql().first("SELECT texts FROM a").await.unwrap();
+        assert_eq!(texts, vec!["x", "y"]);
+
+        // `= ANY($1)` is the idiomatic alternative to building an IN list.
+        let matched: Vec<i64> = db
+            .client
+            .esql()
+            .query((
+                "SELECT unnest(ints)::bigint FROM a WHERE 2 = ANY(ints) AND ints && ?",
+                vec![2i32],
+            ))
+            .await
+            .unwrap();
+        assert_eq!(matched, vec![1, 2, 3]);
+    }
+
+    #[tokio::test]
+    async fn null_reads_into_option() {
+        let mut db = TestDb::new("nulls").await;
+
+        db.client
+            .esql()
+            .execute("CREATE TABLE n (a INTEGER, b TEXT, c TIMESTAMPTZ)")
+            .await
+            .unwrap();
+
+        db.client
+            .esql()
+            .execute((
+                "INSERT INTO n VALUES (?, ?, ?)",
+                None::<i32>,
+                None::<String>,
+                None::<time::OffsetDateTime>,
+            ))
+            .await
+            .unwrap();
+
+        let a: Option<i32> = db.client.esql().first("SELECT a FROM n").await.unwrap();
+        let b: Option<String> = db.client.esql().first("SELECT b FROM n").await.unwrap();
+        assert_eq!(a, None);
+        assert_eq!(b, None);
+    }
 }

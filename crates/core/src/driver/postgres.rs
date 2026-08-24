@@ -1,7 +1,7 @@
 use futures_util::TryStreamExt;
 use tokio_postgres::{
     Client, Transaction,
-    types::{ToSql, to_sql_checked},
+    types::{FromSql, IsNull, Kind, ToSql, Type, to_sql_checked},
 };
 
 use crate::{
@@ -9,10 +9,127 @@ use crate::{
     driver::{Esql, EsqlDriver, FromValue, RowIndex},
 };
 
+type BoxError = Box<dyn std::error::Error + Sync + Send>;
+
 impl From<tokio_postgres::Error> for Error<tokio_postgres::Error> {
     fn from(value: tokio_postgres::Error) -> Self {
         Self::Driver(value)
     }
+}
+
+/// Maps postgres type names onto the Rust type used to decode them. The
+/// resulting value is lifted into [Value] through its `From` impls, so this
+/// table only has to name types that are already convertible.
+///
+/// Arrays are not listed: postgres-types provides `Vec<T>` for any `T: FromSql`,
+/// so `Vec<Value>` recurses through this same table for the member type.
+macro_rules! pg_types {
+    ($($(#[$attr:meta])* $($name:literal)|+ => $ty:ty),+ $(,)?) => {
+        fn decode(ty: &Type, raw: &[u8]) -> Result<Value, BoxError> {
+            Ok(match ty.name() {
+                $($(#[$attr])* $($name)|+ => <$ty as FromSql>::from_sql(ty, raw)?.into(),)+
+                _ if matches!(ty.kind(), Kind::Array(_)) => {
+                    <Vec<Value> as FromSql>::from_sql(ty, raw)?.into()
+                }
+                other => return Err(format!("unsupported postgres type: {other}").into()),
+            })
+        }
+
+        fn decodable(ty: &Type) -> bool {
+            match ty.name() {
+                $($(#[$attr])* $($name)|+ => true,)+
+                _ => match ty.kind() {
+                    Kind::Array(member) => decodable(member),
+                    _ => false,
+                },
+            }
+        }
+    };
+}
+
+pg_types! {
+    "bool" => bool,
+    "bytea" => Vec<u8>,
+    "bpchar" | "citext" | "name" | "text" | "unknown" | "varchar" => String,
+    "float4" => f32,
+    "float8" => f64,
+    "inet" => std::net::IpAddr,
+    "int2" => i16,
+    "int4" => i32,
+    "int8" => i64,
+    "oid" => u32,
+    #[cfg(feature = "with-rust_decimal-1")]
+    "numeric" => rust_decimal::Decimal,
+    #[cfg(feature = "with-serde_json-1")]
+    "json" | "jsonb" => serde_json::Value,
+    #[cfg(feature = "with-time-0_3")]
+    "date" => time::Date,
+    #[cfg(feature = "with-time-0_3")]
+    "time" => time::Time,
+    #[cfg(feature = "with-time-0_3")]
+    "timestamp" => time::PrimitiveDateTime,
+    #[cfg(feature = "with-time-0_3")]
+    "timestamptz" => time::OffsetDateTime,
+    #[cfg(feature = "with-uuid-1")]
+    "uuid" => uuid::Uuid,
+}
+
+impl<'a> FromSql<'a> for Value {
+    fn from_sql(ty: &Type, raw: &'a [u8]) -> Result<Self, BoxError> {
+        decode(ty, raw)
+    }
+
+    fn from_sql_null(_: &Type) -> Result<Self, BoxError> {
+        Ok(Value::Null)
+    }
+
+    fn accepts(ty: &Type) -> bool {
+        decodable(ty)
+    }
+}
+
+impl ToSql for Value {
+    fn to_sql(&self, ty: &Type, out: &mut tokio_postgres::types::private::BytesMut) -> Result<IsNull, BoxError> {
+        // Delegating to the inner type's `to_sql_checked` rather than `to_sql`
+        // keeps the variant/column check where the good error message lives,
+        // and lets `accepts` stay permissive.
+        match self {
+            Value::Null => Ok(IsNull::Yes),
+            Value::Array(v) => v.to_sql_checked(ty, out),
+            Value::Bool(v) => v.to_sql_checked(ty, out),
+            Value::Bytes(v) => v.to_sql_checked(ty, out),
+            Value::F32(v) => v.to_sql_checked(ty, out),
+            Value::F64(v) => v.to_sql_checked(ty, out),
+            Value::I16(v) => v.to_sql_checked(ty, out),
+            Value::I32(v) => v.to_sql_checked(ty, out),
+            Value::I64(v) => v.to_sql_checked(ty, out),
+            Value::IpAddr(v) => v.to_sql_checked(ty, out),
+            Value::String(v) => v.to_sql_checked(ty, out),
+            // Postgres has no unsigned integers; int8 is the only lossless
+            // target and it cannot hold the top half of the range.
+            Value::U64(v) => i64::try_from(*v)?.to_sql_checked(ty, out),
+            #[cfg(feature = "with-rust_decimal-1")]
+            Value::Decimal(v) => v.to_sql_checked(ty, out),
+            #[cfg(feature = "with-serde_json-1")]
+            Value::Json(v) => v.to_sql_checked(ty, out),
+            #[cfg(feature = "with-time-0_3")]
+            Value::Date(v) => v.to_sql_checked(ty, out),
+            #[cfg(feature = "with-time-0_3")]
+            Value::DateTime(v) => v.to_sql_checked(ty, out),
+            #[cfg(feature = "with-time-0_3")]
+            Value::OffsetDateTime(v) => v.to_sql_checked(ty, out),
+            #[cfg(feature = "with-time-0_3")]
+            Value::Time(v) => v.to_sql_checked(ty, out),
+            #[cfg(feature = "with-uuid-1")]
+            Value::Uuid(v) => v.to_sql_checked(ty, out),
+        }
+    }
+
+    fn accepts(_: &Type) -> bool {
+        true
+    }
+
+    to_sql_checked! {}
 }
 
 impl Row for tokio_postgres::Row {
@@ -21,174 +138,24 @@ impl Row for tokio_postgres::Row {
         I: Into<RowIndex<'a>>,
         T: FromValue,
     {
-        let subject_index = index.into();
-
-        let (column_index, column) = self
-            .columns()
-            .iter()
-            .enumerate()
-            .find(|(index, col)| match subject_index {
-                RowIndex::Pos(i) => *index == i,
-                RowIndex::Name(n) => col.name() == n,
-            })
-            .ok_or_else(|| match subject_index {
-                RowIndex::Pos(i) => FromRowError::ColumnNotFound(i.to_string()),
-                RowIndex::Name(n) => FromRowError::ColumnNotFound(n.to_string()),
-            })?;
-
-        let value = match column.type_().name() {
-            "bool" => match self.try_get::<_, Option<bool>>(column_index) {
-                Ok(Some(v)) => Value::Bool(v),
-                Ok(None) => Value::Null,
-                Err(e) => {
-                    return Err(FromRowError::TypeMismatch {
-                        expected: "bool",
-                        got: e.to_string(),
-                    });
-                }
-            },
-            "int4" => match self.try_get::<_, Option<i32>>(column_index) {
-                Ok(Some(v)) => Value::I32(v),
-                Ok(None) => Value::Null,
-                Err(e) => {
-                    return Err(FromRowError::TypeMismatch {
-                        expected: "i32",
-                        got: e.to_string(),
-                    });
-                }
-            },
-            "int8" => match self.try_get::<_, Option<i64>>(column_index) {
-                Ok(Some(v)) => Value::I64(v),
-                Ok(None) => Value::Null,
-                Err(e) => {
-                    return Err(FromRowError::TypeMismatch {
-                        expected: "i64",
-                        got: e.to_string(),
-                    });
-                }
-            },
-            "float4" => match self.try_get::<_, Option<f32>>(column_index) {
-                Ok(Some(v)) => Value::F32(v),
-                Ok(None) => Value::Null,
-                Err(e) => {
-                    return Err(FromRowError::TypeMismatch {
-                        expected: "f32",
-                        got: e.to_string(),
-                    });
-                }
-            },
-            "float8" => match self.try_get::<_, Option<f64>>(column_index) {
-                Ok(Some(v)) => Value::F64(v),
-                Ok(None) => Value::Null,
-                Err(e) => {
-                    return Err(FromRowError::TypeMismatch {
-                        expected: "f64",
-                        got: e.to_string(),
-                    });
-                }
-            },
-            "text" | "varchar" => match self.try_get::<_, Option<String>>(column_index) {
-                Ok(Some(v)) => Value::String(v),
-                Ok(None) => Value::Null,
-                Err(e) => {
-                    return Err(FromRowError::TypeMismatch {
-                        expected: "string",
-                        got: e.to_string(),
-                    });
-                }
-            },
-            "bytea" => match self.try_get::<_, Option<Vec<u8>>>(column_index) {
-                Ok(Some(v)) => Value::Bytes(v),
-                Ok(None) => Value::Null,
-                Err(e) => {
-                    return Err(FromRowError::TypeMismatch {
-                        expected: "bytes",
-                        got: e.to_string(),
-                    });
-                }
-            },
-            #[cfg(feature = "with-time-0_3")]
-            "timestamptz" => match self.try_get::<_, Option<time::OffsetDateTime>>(column_index) {
-                Ok(Some(v)) => Value::OffsetDateTime(v),
-                Ok(None) => Value::Null,
-                Err(e) => {
-                    return Err(FromRowError::TypeMismatch {
-                        expected: "timestamptz",
-                        got: e.to_string(),
-                    });
-                }
-            },
-            #[cfg(feature = "with-uuid-1")]
-            "uuid" => match self.try_get::<_, Option<uuid::Uuid>>(column_index) {
-                Ok(Some(v)) => Value::Uuid(v),
-                Ok(None) => Value::Null,
-                Err(e) => {
-                    return Err(FromRowError::TypeMismatch {
-                        expected: "uuid",
-                        got: e.to_string(),
-                    });
-                }
-            },
-            other => {
-                return Err(FromRowError::TypeMismatch {
-                    expected: "supported type",
-                    got: other.to_string(),
-                });
-            }
+        let position = match index.into() {
+            RowIndex::Pos(i) if i < self.columns().len() => i,
+            RowIndex::Pos(i) => return Err(FromRowError::ColumnNotFound(i.to_string())),
+            RowIndex::Name(n) => self
+                .columns()
+                .iter()
+                .position(|col| col.name() == n)
+                .ok_or_else(|| FromRowError::ColumnNotFound(n.to_string()))?,
         };
+
+        let value: Value =
+            tokio_postgres::Row::try_get(self, position).map_err(|e| FromRowError::TypeMismatch {
+                expected: "supported type",
+                got: e.to_string(),
+            })?;
 
         FromValue::from_value(value)
     }
-}
-
-impl ToSql for Value {
-    fn to_sql(
-        &self,
-        ty: &tokio_postgres::types::Type,
-        out: &mut tokio_postgres::types::private::BytesMut,
-    ) -> Result<tokio_postgres::types::IsNull, Box<dyn std::error::Error + Sync + Send>>
-    where
-        Self: Sized,
-    {
-        match self {
-            Value::Null => Ok(tokio_postgres::types::IsNull::Yes),
-            Value::Bool(b) => b.to_sql(ty, out),
-            Value::Bytes(b) => b.to_sql(ty, out),
-            Value::F32(f) => f.to_sql(ty, out),
-            Value::F64(f) => f.to_sql(ty, out),
-            Value::I32(i) => i.to_sql(ty, out),
-            Value::I64(i) => i.to_sql(ty, out),
-            #[cfg(feature = "with-time-0_3")]
-            Value::OffsetDateTime(dt) => dt.to_sql(ty, out),
-            Value::String(s) => s.to_sql(ty, out),
-            #[cfg(feature = "with-uuid-1")]
-            Value::Uuid(u) => u.to_sql(ty, out),
-        }
-    }
-
-    fn accepts(ty: &tokio_postgres::types::Type) -> bool
-    where
-        Self: Sized,
-    {
-        let name = ty.name();
-        if matches!(
-            name,
-            "bool" | "bytea" | "float4" | "float8" | "int4" | "int8" | "text" | "varchar"
-        ) {
-            return true;
-        }
-        #[cfg(feature = "with-time-0_3")]
-        if name == "timestamptz" {
-            return true;
-        }
-        #[cfg(feature = "with-uuid-1")]
-        if name == "uuid" {
-            return true;
-        }
-        false
-    }
-
-    to_sql_checked! {}
 }
 
 fn slice_iter<'a>(s: &'a [Value]) -> impl ExactSizeIterator<Item = &'a dyn ToSql> + 'a {
@@ -199,6 +166,7 @@ macro_rules! impl_pg_esql {
     ($ty:ty) => {
         impl Esql for $ty {
             type Error = tokio_postgres::Error;
+            type Dialect = crate::dialect::Postgres;
 
             fn esql(&mut self) -> EsqlDriver<'_, Self> {
                 EsqlDriver(self)

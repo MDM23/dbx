@@ -18,13 +18,13 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
 
-      # `mysql` and `postgres` are mutually exclusive, so each driver gets its
-      # own pass instead of a single --all-features run.
-      - name: Clippy (postgres features)
-        run: cargo clippy -p esql -p esql-core -p esql-migrate -p example-pools -p e2e-postgres --all-targets --features postgres,migrate -- -D warnings
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --all-features -- -D warnings
 
-      - name: Clippy (mysql features)
-        run: cargo clippy -p esql -p esql-core -p esql-migrate -p example-drivers -p e2e-mysql --all-targets --features mysql,migrate -- -D warnings
+      # No driver at all. This is the docs.rs configuration, and nothing but a
+      # dedicated job builds it.
+      - name: Clippy (no features)
+        run: cargo clippy -p esql -p esql-core --all-targets -- -D warnings
 
   audit:
     name: Audit
@@ -39,19 +39,33 @@ jobs:
         run: cargo audit
 
   test:
-    name: Unit tests
+    name: Unit tests (${{ matrix.features }})
     runs-on: ubuntu-latest
+
+    # Both drivers build together, so each entry covers both value encoders.
+    # The type features still get a pass each: the encoders match exhaustively,
+    # so a variant gated behind one feature is only reachable in a build with
+    # exactly that feature on. That gap is what let a broken `mysql` +
+    # `with-time-0_3` build ship.
+    strategy:
+      fail-fast: false
+      matrix:
+        features:
+          - mysql,postgres,migrate
+          - mysql,postgres,migrate,with-rust_decimal-1
+          - mysql,postgres,migrate,with-serde_json-1
+          - mysql,postgres,migrate,with-time-0_3
+          - mysql,postgres,migrate,with-uuid-1
+          - mysql,migrate
+          - postgres,migrate
 
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
 
-      - name: Unit tests (postgres features)
-        run: cargo test -p esql -p esql-core -p esql-migrate --features postgres,migrate
-
-      - name: Unit tests (mysql features)
-        run: cargo test -p esql -p esql-core -p esql-migrate --features mysql,migrate
+      - name: Unit tests
+        run: cargo test -p esql -p esql-core -p esql-migrate --features ${{ matrix.features }}
 
   e2e-postgres:
     name: E2E Postgres

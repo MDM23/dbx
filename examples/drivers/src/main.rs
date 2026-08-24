@@ -1,15 +1,15 @@
+//! Both drivers in one binary. The placeholder style comes from the
+//! connection's dialect, so the same `?` source syntax reaches MySQL as `?`
+//! and Postgres as `$1`.
+
 use esql::Esql;
 
 #[tokio::main]
 async fn main() {
-    #[cfg(feature = "mysql")]
     mysql_example().await.unwrap();
-
-    #[cfg(feature = "postgres")]
     postgres_example().await.unwrap();
 }
 
-#[cfg(feature = "mysql")]
 async fn mysql_example() -> Result<(), esql::Error<mysql_async::Error>> {
     use mysql_async::TxOpts;
 
@@ -28,7 +28,6 @@ async fn mysql_example() -> Result<(), esql::Error<mysql_async::Error>> {
     Ok(())
 }
 
-#[cfg(feature = "postgres")]
 async fn postgres_example() -> Result<(), esql::Error<tokio_postgres::Error>> {
     use tokio_postgres::NoTls;
 
@@ -37,15 +36,13 @@ async fn postgres_example() -> Result<(), esql::Error<tokio_postgres::Error>> {
 
     tokio::spawn(async move {
         if let Err(e) = connection.await {
-            eprintln!("connection error: {}", e);
+            eprintln!("connection error: {e}");
         }
     });
 
-    // Call .esql() to get an esql handle, then use execute/query/first
     let result: u64 = client.esql().execute(("SELECT 1 + ?", 2)).await?;
     println!("affected: {result}");
 
-    // Transactions work the same way
     let mut tx = client.transaction().await?;
     tx.esql().execute(("SELECT 1 + ?", 2)).await?;
     tx.esql().execute(("SELECT 1 + ?", 2)).await?;

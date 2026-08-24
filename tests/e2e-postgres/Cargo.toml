@@ -6,6 +6,19 @@ version.workspace = true
 publish = false
 
 [dependencies]
-esql = { workspace = true, features = ["postgres", "migrate", "derive"] }
+esql = { workspace = true, features = [
+	"mysql",
+	"postgres",
+	"migrate",
+	"derive",
+	"with-rust_decimal-1",
+	"with-serde_json-1",
+	"with-time-0_3",
+	"with-uuid-1",
+] }
+rust_decimal = { workspace = true }
+serde_json = { workspace = true }
+time = { workspace = true }
 tokio = { workspace = true }
 tokio-postgres = { workspace = true }
+uuid = { workspace = true }

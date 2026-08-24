@@ -269,4 +269,156 @@ mod tests {
         assert_eq!(count, 0);
         db.cleanup().await;
     }
+
+    #[derive(FromRow, PartialEq, Debug)]
+    struct Scalars {
+        c_bool: bool,
+        c_smallint: i16,
+        c_int: i32,
+        c_bigint: i64,
+        c_unsigned: u64,
+        c_float: f32,
+        c_double: f64,
+        c_decimal: rust_decimal::Decimal,
+        c_text: String,
+        c_blob: Vec<u8>,
+    }
+
+    #[derive(FromRow, PartialEq, Debug)]
+    struct Extended {
+        c_uuid: uuid::Uuid,
+        c_inet: std::net::IpAddr,
+        c_json: serde_json::Value,
+        c_date: time::Date,
+        c_time: time::Time,
+        c_datetime: time::PrimitiveDateTime,
+    }
+
+    /// MySQL reports every integer width as `Int(i64)`, so the narrow targets
+    /// here only work if conversion is by value rather than by variant.
+    #[tokio::test]
+    async fn scalar_types_round_trip() {
+        let db = TestDb::new("scalars").await;
+        let mut pool = db.pool.clone();
+
+        pool.esql()
+            .execute(
+                "CREATE TABLE t (
+                    c_bool      BOOLEAN,
+                    c_smallint  SMALLINT,
+                    c_int       INT,
+                    c_bigint    BIGINT,
+                    c_unsigned  BIGINT UNSIGNED,
+                    c_float     FLOAT,
+                    c_double    DOUBLE,
+                    c_decimal   DECIMAL(10,2),
+                    c_text      TEXT,
+                    c_blob      BLOB
+                )",
+            )
+            .await
+            .unwrap();
+
+        let expected = Scalars {
+            c_bool: true,
+            c_smallint: 7,
+            c_int: 8,
+            c_bigint: 9,
+            c_unsigned: u64::MAX,
+            c_float: 1.5,
+            c_double: 2.5,
+            c_decimal: "10.25".parse().unwrap(),
+            c_text: "text".into(),
+            c_blob: vec![1, 2, 3],
+        };
+
+        pool.esql()
+            .execute((
+                "INSERT INTO t VALUES (?,?,?,?,?,?,?,?,?,?)",
+                expected.c_bool,
+                expected.c_smallint,
+                expected.c_int,
+                expected.c_bigint,
+                expected.c_unsigned,
+                expected.c_float,
+                expected.c_double,
+                expected.c_decimal,
+                expected.c_text.clone(),
+                expected.c_blob.clone(),
+            ))
+            .await
+            .unwrap();
+
+        let actual: Scalars = pool.esql().first("SELECT * FROM t").await.unwrap();
+        assert_eq!(actual, expected);
+        db.cleanup().await;
+    }
+
+    /// MySQL has no native uuid or inet type, and hands DECIMAL and JSON back
+    /// as text, so these all round-trip through their conventional columns.
+    #[tokio::test]
+    async fn extended_types_round_trip() {
+        let db = TestDb::new("extended").await;
+        let mut pool = db.pool.clone();
+
+        pool.esql()
+            .execute(
+                "CREATE TABLE t (
+                    c_uuid      CHAR(36),
+                    c_inet      VARCHAR(45),
+                    c_json      JSON,
+                    c_date      DATE,
+                    c_time      TIME,
+                    c_datetime  DATETIME
+                )",
+            )
+            .await
+            .unwrap();
+
+        let date = time::Date::from_calendar_date(2026, time::Month::August, 24).unwrap();
+        let expected = Extended {
+            c_uuid: uuid::Uuid::parse_str("67e55044-10b1-426f-9247-bb680e5fe0c8").unwrap(),
+            c_inet: "192.168.1.1".parse().unwrap(),
+            c_json: serde_json::json!({ "a": 1 }),
+            c_date: date,
+            c_time: time::Time::from_hms(13, 30, 0).unwrap(),
+            c_datetime: time::PrimitiveDateTime::new(date, time::Time::from_hms(13, 30, 0).unwrap()),
+        };
+
+        pool.esql()
+            .execute((
+                "INSERT INTO t VALUES (?,?,?,?,?,?)",
+                expected.c_uuid,
+                expected.c_inet,
+                expected.c_json.clone(),
+                expected.c_date,
+                expected.c_time,
+                expected.c_datetime,
+            ))
+            .await
+            .unwrap();
+
+        let actual: Extended = pool.esql().first("SELECT * FROM t").await.unwrap();
+        assert_eq!(actual, expected);
+        db.cleanup().await;
+    }
+
+    /// MySQL has no array type, so binding one has to fail with a clear error
+    /// rather than encoding something arbitrary.
+    #[tokio::test]
+    async fn arrays_are_rejected() {
+        let db = TestDb::new("arrays").await;
+        let mut pool = db.pool.clone();
+
+        let result = pool
+            .esql()
+            .execute(("SELECT ?", vec![1i32, 2, 3]))
+            .await;
+
+        assert!(matches!(
+            result,
+            Err(esql::Error::UnsupportedParam("array"))
+        ));
+        db.cleanup().await;
+    }
 }
