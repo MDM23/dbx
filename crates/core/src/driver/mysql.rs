@@ -83,9 +83,11 @@ fn temporal(raw: &mysql_async::Value) -> Result<Value, FromRowError> {
         }
         // MySQL TIME is a signed duration of up to ~838 hours. It only
         // coincides with a wall clock time inside a single positive day.
-        mysql_async::Value::Time(false, 0, h, mi, s, us) => time::Time::from_hms_micro(h, mi, s, us)
-            .map(Value::Time)
-            .map_err(|_| unsupported()),
+        mysql_async::Value::Time(false, 0, h, mi, s, us) => {
+            time::Time::from_hms_micro(h, mi, s, us)
+                .map(Value::Time)
+                .map_err(|_| unsupported())
+        }
         _ => Err(unsupported()),
     }
 }

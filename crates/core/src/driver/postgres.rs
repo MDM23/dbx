@@ -89,7 +89,11 @@ impl<'a> FromSql<'a> for Value {
 }
 
 impl ToSql for Value {
-    fn to_sql(&self, ty: &Type, out: &mut tokio_postgres::types::private::BytesMut) -> Result<IsNull, BoxError> {
+    fn to_sql(
+        &self,
+        ty: &Type,
+        out: &mut tokio_postgres::types::private::BytesMut,
+    ) -> Result<IsNull, BoxError> {
         // Delegating to the inner type's `to_sql_checked` rather than `to_sql`
         // keeps the variant/column check where the good error message lives,
         // and lets `accepts` stay permissive.
@@ -148,11 +152,12 @@ impl Row for tokio_postgres::Row {
                 .ok_or_else(|| FromRowError::ColumnNotFound(n.to_string()))?,
         };
 
-        let value: Value =
-            tokio_postgres::Row::try_get(self, position).map_err(|e| FromRowError::TypeMismatch {
+        let value: Value = tokio_postgres::Row::try_get(self, position).map_err(|e| {
+            FromRowError::TypeMismatch {
                 expected: "supported type",
                 got: e.to_string(),
-            })?;
+            }
+        })?;
 
         FromValue::from_value(value)
     }

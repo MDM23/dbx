@@ -1,7 +1,11 @@
 use std::borrow::Cow;
 use std::iter;
 
-use crate::{Value, dialect::Dialect};
+use crate::{
+    ParamCountError, Value,
+    dialect::Dialect,
+    lexer::{self, Piece},
+};
 
 /// A wrapper certifying that the contained SQL string is safe to embed
 /// directly (i.e. not user-supplied input that needs parameterisation).
@@ -32,6 +36,15 @@ impl<'a> Trusted<'a> {
 pub(crate) enum Fragment<'a> {
     Raw(Cow<'a, str>),
     Param,
+}
+
+impl Fragment<'_> {
+    fn into_owned(self) -> Fragment<'static> {
+        match self {
+            Self::Param => Fragment::Param,
+            Self::Raw(text) => Fragment::Raw(Cow::Owned(text.into_owned())),
+        }
+    }
 }
 
 #[derive(Debug, Default)]
@@ -188,25 +201,38 @@ impl<'a> Query<'a> {
     ///
     /// The driver methods on [crate::EsqlDriver] pick `D` from the connection,
     /// so this only needs naming directly when building SQL by hand.
-    pub fn build<D: Dialect>(self) -> (String, Vec<Value>) {
-        let mut buffer = String::with_capacity(64);
-        let mut index = 0usize;
+    ///
+    /// # Errors
+    ///
+    /// [ParamCountError] if the query holds a different number of placeholders
+    /// than it does parameters. Every caller routes through here, so a
+    /// statement the server would reject never leaves the process.
+    pub fn build<D: Dialect>(self) -> Result<(String, Vec<Value>), ParamCountError> {
+        let mut sql = String::with_capacity(64);
+        let mut placeholders = 0usize;
 
-        for frag in self.fragments {
-            if !buffer.is_empty() {
-                buffer.push(' ');
+        for fragment in self.fragments {
+            if !sql.is_empty() {
+                sql.push(' ');
             }
 
-            match frag {
+            match fragment {
                 Fragment::Param => {
-                    index += 1;
-                    D::placeholder(index, &mut buffer);
+                    placeholders += 1;
+                    D::placeholder(placeholders, &mut sql);
                 }
-                Fragment::Raw(r) => buffer.push_str(&r),
+                Fragment::Raw(text) => sql.push_str(&text),
             }
         }
 
-        (buffer, self.params)
+        if placeholders != self.params.len() {
+            return Err(ParamCountError {
+                placeholders,
+                params: self.params.len(),
+            });
+        }
+
+        Ok((sql, self.params))
     }
 }
 
@@ -214,74 +240,29 @@ impl<'a> Query<'a> {
 //                   Q U E R Y   P A R S I N G
 ////////////////////////////////////////////////////////////////////////////////
 
-/// Parses a SQL string into [`Fragment`]s, splitting at unquoted `?`
-/// placeholders. The `$wrap` expression converts each `&str` slice into the
-/// appropriate [`Cow`] variant.
-macro_rules! parse_sql {
-    ($statement:expr, $params:expr, $wrap:expr) => {{
-        let mut statement = $statement;
-        let mut query = Query {
-            fragments: Vec::new(),
-            params: $params,
-        };
-
-        let mut chars = statement.chars();
-        let mut delimiter = None;
-        let mut consumed = 0usize;
-
-        while let Some(c) = chars.next() {
-            match c {
-                c @ ('"' | '\'' | '`') => {
-                    match delimiter {
-                        Some(d) if d == c => delimiter = None,
-                        None => delimiter = Some(c),
-                        _ => {}
-                    }
-
-                    consumed += c.len_utf8();
-                }
-                c @ '?' if delimiter.is_none() => {
-                    query.fragments.extend([
-                        Fragment::Raw($wrap(statement[..consumed].trim_end())),
-                        Fragment::Param,
-                    ]);
-
-                    statement = &statement[consumed + c.len_utf8()..];
-                    chars = statement.chars();
-                    consumed = 0;
-                }
-                c @ '\\' if delimiter.is_some() => {
-                    consumed += c.len_utf8() + chars.next().map(char::len_utf8).unwrap_or(0);
-                }
-                c if consumed == 0 && c.is_whitespace() => {
-                    statement = &statement[c.len_utf8()..];
-                    chars = statement.chars();
-                    consumed = 0;
-                }
-                c => {
-                    consumed += c.len_utf8();
-                }
-            }
-        }
-
-        if consumed > 0 {
-            query
-                .fragments
-                .push(Fragment::Raw($wrap(statement[..consumed].trim_end())));
-        }
-
-        query
-    }};
+fn parse(sql: &str) -> Vec<Fragment<'_>> {
+    lexer::scan(sql)
+        .into_iter()
+        .map(|piece| match piece {
+            Piece::Param => Fragment::Param,
+            Piece::Raw(range) => Fragment::Raw(Cow::Borrowed(&sql[range])),
+            Piece::Escaped(text) => Fragment::Raw(Cow::Owned(text)),
+        })
+        .collect()
 }
 
 fn make_query<'a, T>(statement: T, params: Vec<Value>) -> Query<'a>
 where
     T: Into<Trusted<'a>>,
 {
-    match statement.into().0 {
-        Cow::Borrowed(s) => parse_sql!(s, params, Cow::Borrowed),
-        Cow::Owned(s) => parse_sql!(s.as_str(), params, |s: &str| Cow::Owned(s.to_owned())),
-    }
+    let fragments = match statement.into().0 {
+        Cow::Borrowed(sql) => parse(sql),
+        // The source string dies with this function, so its fragments have to
+        // take their text with them.
+        Cow::Owned(sql) => parse(&sql).into_iter().map(Fragment::into_owned).collect(),
+    };
+
+    Query { fragments, params }
 }
 
 impl<'a, T> From<T> for Query<'a>
@@ -335,9 +316,9 @@ mod tests {
 
         q1.push(("AND d != ?", 13.37f32));
 
-        let (sql, params) = q1.build::<Postgres>();
+        let (sql, params) = q1.build::<Postgres>().unwrap();
         assert_eq!(params.len(), 3);
-        assert!(!sql.contains("hello?") || sql.contains("\"hello?\""));
+        assert!(sql.contains("\"hello?\""));
     }
 
     #[test]
@@ -345,7 +326,7 @@ mod tests {
         let mut q2 = Query::from("SELECT * FROM users");
         q2.push_where(Query::in_("type", ["admin", "moderator"]));
 
-        let (sql, params) = q2.build::<Postgres>();
+        let (sql, params) = q2.build::<Postgres>().unwrap();
         assert_eq!(params.len(), 2);
         assert!(sql.contains("WHERE"));
         assert!(sql.contains("IN"));
@@ -354,7 +335,7 @@ mod tests {
     #[test]
     fn empty_in_clause() {
         let q = Query::in_("type", Vec::<String>::new());
-        let (sql, _) = q.build::<Postgres>();
+        let (sql, _) = q.build::<Postgres>().unwrap();
         assert!(sql.contains("1=0"));
     }
 
@@ -365,8 +346,8 @@ mod tests {
     fn one_query_builds_for_both_dialects() {
         let build = || Query::from(("SELECT a WHERE b = ? AND c = ?", 1, 2));
 
-        let (pg, pg_params) = build().build::<Postgres>();
-        let (my, my_params) = build().build::<MySql>();
+        let (pg, pg_params) = build().build::<Postgres>().unwrap();
+        let (my, my_params) = build().build::<MySql>().unwrap();
 
         assert_eq!(pg, "SELECT a WHERE b = $1 AND c = $2");
         assert_eq!(my, "SELECT a WHERE b = ? AND c = ?");
@@ -380,7 +361,34 @@ mod tests {
         q.push(("AND a = ?", 2));
         q.push(("AND b = ?", 3));
 
-        let (sql, _) = q.build::<Postgres>();
+        let (sql, _) = q.build::<Postgres>().unwrap();
         assert_eq!(sql, "SELECT $1 AND a = $2 AND b = $3");
+    }
+
+    #[test]
+    fn param_count_mismatch_does_not_build() {
+        assert!(Query::from(("SELECT ?, ?", 1)).build::<Postgres>().is_err());
+        assert!(Query::from(("SELECT ?", 1, 2)).build::<Postgres>().is_err());
+    }
+
+    /// An escaped `?` is text, so it must not be counted as a placeholder.
+    #[test]
+    fn escaped_placeholders_do_not_count_as_params() {
+        let (sql, params) = Query::from(("SELECT * FROM d WHERE data ?? ? AND id = ?", "key", 1))
+            .build::<Postgres>()
+            .unwrap();
+
+        assert_eq!(sql, "SELECT * FROM d WHERE data ? $1 AND id = $2");
+        assert_eq!(params.len(), 2);
+    }
+
+    #[test]
+    fn owned_sql_keeps_its_text() {
+        let sql = format!("SELECT {} WHERE a = ?", "name");
+        let (sql, _) = Query::from((Trusted::unchecked(sql), 1))
+            .build::<Postgres>()
+            .unwrap();
+
+        assert_eq!(sql, "SELECT name WHERE a = $1");
     }
 }

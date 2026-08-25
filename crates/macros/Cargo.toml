@@ -1,7 +1,12 @@
 [package]
 name = "esql-macros"
+description = "Derive and migration macros for the `esql` crate"
+categories.workspace = true
 edition.workspace = true
+keywords.workspace = true
 license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 version.workspace = true
 
 [lib]

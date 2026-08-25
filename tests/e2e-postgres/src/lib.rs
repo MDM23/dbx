@@ -204,6 +204,113 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn first_optional_returns_none_on_empty_result() {
+        let mut db = TestDb::with_users_table("first_optional").await;
+
+        let missing: Option<String> = db
+            .client
+            .esql()
+            .first_optional(("SELECT name FROM users WHERE id = ?", 1i64))
+            .await
+            .unwrap();
+
+        assert_eq!(missing, None);
+
+        db.client
+            .esql()
+            .execute((
+                "INSERT INTO users (id, name, active) VALUES (?, ?, ?)",
+                1i64,
+                "Iris",
+                true,
+            ))
+            .await
+            .unwrap();
+
+        let found: Option<String> = db
+            .client
+            .esql()
+            .first_optional(("SELECT name FROM users WHERE id = ?", 1i64))
+            .await
+            .unwrap();
+
+        assert_eq!(found.as_deref(), Some("Iris"));
+    }
+
+    /// The jsonb existence operators are spelled `??`, `??|` and `??&`, since a
+    /// bare `?` is a placeholder. Nothing else can tell them apart.
+    #[tokio::test]
+    async fn jsonb_existence_operators() {
+        let mut db = TestDb::new("jsonb_ops").await;
+
+        db.client
+            .esql()
+            .execute("CREATE TABLE d (id INTEGER, data JSONB)")
+            .await
+            .unwrap();
+
+        db.client
+            .esql()
+            .execute((
+                "INSERT INTO d VALUES (?, ?)",
+                1i32,
+                serde_json::json!({ "a": 1, "b": 2 }),
+            ))
+            .await
+            .unwrap();
+
+        let by_key: i64 = db
+            .client
+            .esql()
+            .first(("SELECT COUNT(*) FROM d WHERE data ?? 'a' AND id = ?", 1i32))
+            .await
+            .unwrap();
+
+        let by_any: i64 = db
+            .client
+            .esql()
+            .first("SELECT COUNT(*) FROM d WHERE data ??| array['b', 'zz']")
+            .await
+            .unwrap();
+
+        let by_all: i64 = db
+            .client
+            .esql()
+            .first("SELECT COUNT(*) FROM d WHERE data ??& array['a', 'b']")
+            .await
+            .unwrap();
+
+        assert_eq!((by_key, by_any, by_all), (1, 1, 1));
+    }
+
+    /// A comment used to eat the rest of the statement, because fragments
+    /// rejoin with a space and the newline was lost with it.
+    #[tokio::test]
+    async fn comments_do_not_swallow_the_statement() {
+        let mut db = TestDb::with_users_table("comments").await;
+
+        db.client
+            .esql()
+            .execute((
+                "INSERT INTO users (id, name, active) -- is this ok?\n VALUES (?, ?, ?)",
+                1i64,
+                "Hank",
+                true,
+            ))
+            .await
+            .unwrap();
+
+        let name: String = db
+            .client
+            .esql()
+            .first("SELECT name /* the column */ FROM users")
+            .await
+            .unwrap();
+
+        assert_eq!(name, "Hank");
+    }
+
+    #[tokio::test]
     async fn transaction_commit() {
         let mut db = TestDb::with_users_table("tx_commit").await;
 

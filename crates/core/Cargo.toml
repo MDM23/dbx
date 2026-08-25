@@ -1,7 +1,12 @@
 [package]
 name = "esql-core"
+description = "Query builder, value mapping and driver traits behind the `esql` crate"
+categories.workspace = true
 edition.workspace = true
+keywords.workspace = true
 license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 version.workspace = true
 
 [features]
@@ -21,6 +26,7 @@ futures-util = { workspace = true }
 mysql_async = { workspace = true, optional = true }
 rust_decimal = { workspace = true, optional = true }
 serde_json = { workspace = true, optional = true }
+thiserror = { workspace = true }
 time = { workspace = true, optional = true }
 tokio-postgres = { workspace = true, optional = true }
 uuid = { workspace = true, optional = true }

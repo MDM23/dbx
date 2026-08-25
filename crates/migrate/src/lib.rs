@@ -1,6 +1,9 @@
 use std::{fs, path::Path, sync::LazyLock};
 
-use esql_core::{Esql, EsqlDriver, FromRow, MigrationError, MigrationErrorKind, Trusted};
+use esql_core::{
+    Dialect, Esql, EsqlDriver, FromRow, MigrationError, MigrationErrorKind, Trusted,
+    split_statements,
+};
 use regex::Regex;
 use sha2::{Digest as _, Sha256};
 
@@ -88,7 +91,28 @@ impl Migrator {
         Migrator { migrations }
     }
 
+    /// Apply every migration that has not been applied yet.
+    ///
+    /// Concurrent boots are serialised by a session lock, so `db` has to be
+    /// something that holds one connection for the whole call: a client or a
+    /// transaction, not a pool that hands out a different connection per
+    /// statement.
     pub async fn run<D>(self, db: &mut EsqlDriver<'_, D>) -> Result<(), esql_core::Error<D::Error>>
+    where
+        D: Esql,
+    {
+        db.execute(<D::Dialect as Dialect>::LOCK).await?;
+
+        let applied = self.apply(db).await;
+        let unlocked = db.execute(<D::Dialect as Dialect>::UNLOCK).await;
+
+        applied?;
+        unlocked?;
+
+        Ok(())
+    }
+
+    async fn apply<D>(&self, db: &mut EsqlDriver<'_, D>) -> Result<(), esql_core::Error<D::Error>>
     where
         D: Esql,
     {
@@ -155,10 +179,8 @@ impl Migrator {
     where
         D: Esql,
     {
-        for stmt in migration.sql.split(";") {
-            if !stmt.trim().is_empty() {
-                db.execute(Trusted::unchecked(stmt)).await?;
-            }
+        for statement in split_statements(&migration.sql) {
+            db.execute(Trusted::unchecked(statement)).await?;
         }
 
         db.execute((

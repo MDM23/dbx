@@ -297,8 +297,7 @@ impl FromValue for serde_json::Value {
             // MySQL returns JSON as text.
             Value::Bytes(_) | Value::String(_) => {
                 let s = String::from_value(value)?;
-                serde_json::from_str(&s)
-                    .map_err(|_| type_mismatch("Json", &Value::String(s)))
+                serde_json::from_str(&s).map_err(|_| type_mismatch("Json", &Value::String(s)))
             }
             other => Err(type_mismatch("Json", &other)),
         }
@@ -307,7 +306,7 @@ impl FromValue for serde_json::Value {
 
 #[cfg(feature = "with-time-0_3")]
 mod time_impls {
-    use super::{FromValue, FromRowError, Value, type_mismatch};
+    use super::{FromRowError, FromValue, Value, type_mismatch};
 
     impl FromValue for time::Date {
         fn from_value(value: Value) -> Result<Self, FromRowError> {

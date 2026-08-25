@@ -12,9 +12,9 @@ pub struct EsqlDriver<'c, C: ?Sized>(pub(crate) &'c mut C);
 
 /// Extension trait implemented on database clients and transactions.
 /// Call `.esql()` to obtain an [EsqlDriver] handle that provides
-/// `execute`, `query`, and `first` methods.
+/// `execute`, `query`, `first` and `first_optional` methods.
 pub trait Esql {
-    type Error;
+    type Error: std::error::Error;
 
     /// How this connection spells parameter placeholders.
     type Dialect: Dialect;
@@ -43,17 +43,11 @@ pub trait Esql {
         &mut self,
         sql: String,
         params: Vec<Value>,
-    ) -> impl Future<Output = Result<T, Error<Self::Error>>> + '_
+    ) -> impl Future<Output = Result<Option<T>, Error<Self::Error>>> + '_
     where
         T: FromRow,
     {
-        async {
-            self._esql_query(sql, params)
-                .await?
-                .into_iter()
-                .next()
-                .ok_or(FromRowError::NoRows.into())
-        }
+        async { Ok(self._esql_query(sql, params).await?.into_iter().next()) }
     }
 }
 
@@ -63,8 +57,12 @@ impl<'c, C: Esql + ?Sized> EsqlDriver<'c, C> {
         &mut self,
         query: impl Into<Query<'q>>,
     ) -> impl Future<Output = Result<u64, Error<C::Error>>> + '_ {
-        let (sql, params) = query.into().build::<C::Dialect>();
-        self.0._esql_execute(sql, params)
+        let built = query.into().build::<C::Dialect>();
+
+        async move {
+            let (sql, params) = built?;
+            self.0._esql_execute(sql, params).await
+        }
     }
 
     /// Execute a query and return all result rows.
@@ -75,8 +73,12 @@ impl<'c, C: Esql + ?Sized> EsqlDriver<'c, C> {
     where
         T: FromRow,
     {
-        let (sql, params) = query.into().build::<C::Dialect>();
-        self.0._esql_query(sql, params)
+        let built = query.into().build::<C::Dialect>();
+
+        async move {
+            let (sql, params) = built?;
+            self.0._esql_query(sql, params).await
+        }
     }
 
     /// Execute a query and return the first row, or error with
@@ -88,8 +90,33 @@ impl<'c, C: Esql + ?Sized> EsqlDriver<'c, C> {
     where
         T: FromRow,
     {
-        let (sql, params) = query.into().build::<C::Dialect>();
-        self.0._esql_first(sql, params)
+        let built = query.into().build::<C::Dialect>();
+
+        async move {
+            let (sql, params) = built?;
+
+            self.0
+                ._esql_first(sql, params)
+                .await?
+                .ok_or_else(|| FromRowError::NoRows.into())
+        }
+    }
+
+    /// Execute a query and return the first row, or [None] where the result
+    /// set is empty.
+    pub fn first_optional<'q, T>(
+        &mut self,
+        query: impl Into<Query<'q>>,
+    ) -> impl Future<Output = Result<Option<T>, Error<C::Error>>> + '_
+    where
+        T: FromRow,
+    {
+        let built = query.into().build::<C::Dialect>();
+
+        async move {
+            let (sql, params) = built?;
+            self.0._esql_first(sql, params).await
+        }
     }
 }
 

@@ -426,7 +426,7 @@ dependencies = [
 
 [[package]]
 name = "e2e-mysql"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "esql",
  "mysql_async",
@@ -439,7 +439,7 @@ dependencies = [
 
 [[package]]
 name = "e2e-postgres"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "esql",
  "rust_decimal",
@@ -468,7 +468,7 @@ dependencies = [
 
 [[package]]
 name = "esql"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "esql-core",
  "esql-macros",
@@ -477,12 +477,13 @@ dependencies = [
 
 [[package]]
 name = "esql-core"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "futures-util",
  "mysql_async",
  "rust_decimal",
  "serde_json",
+ "thiserror",
  "time",
  "tokio-postgres",
  "uuid",
@@ -490,7 +491,7 @@ dependencies = [
 
 [[package]]
 name = "esql-macros"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "esql-migrate",
  "proc-macro2",
@@ -500,7 +501,7 @@ dependencies = [
 
 [[package]]
 name = "esql-migrate"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "base16ct",
  "esql-core",
@@ -510,7 +511,7 @@ dependencies = [
 
 [[package]]
 name = "example-drivers"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "esql",
  "mysql_async",
@@ -520,7 +521,7 @@ dependencies = [
 
 [[package]]
 name = "example-pools"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "bb8",
  "bb8-postgres",

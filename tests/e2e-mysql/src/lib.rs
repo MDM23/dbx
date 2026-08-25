@@ -85,7 +85,17 @@ mod tests {
     async fn migrations() {
         let mut db = TestDb::new("migrations").await;
         let migrator = esql::migrate::embed_migrations!("../migrations");
-        migrator.run(&mut db.pool.esql()).await.unwrap();
+
+        // The migrator takes a session lock, so it needs a handle that keeps
+        // one connection rather than a pool that hands out any of them.
+        let mut tx = db
+            .pool
+            .start_transaction(mysql_async::TxOpts::new())
+            .await
+            .unwrap();
+
+        migrator.run(&mut tx.esql()).await.unwrap();
+        tx.commit().await.unwrap();
 
         let tables: Vec<String> = db
             .pool
@@ -382,7 +392,10 @@ mod tests {
             c_json: serde_json::json!({ "a": 1 }),
             c_date: date,
             c_time: time::Time::from_hms(13, 30, 0).unwrap(),
-            c_datetime: time::PrimitiveDateTime::new(date, time::Time::from_hms(13, 30, 0).unwrap()),
+            c_datetime: time::PrimitiveDateTime::new(
+                date,
+                time::Time::from_hms(13, 30, 0).unwrap(),
+            ),
         };
 
         pool.esql()
@@ -410,10 +423,7 @@ mod tests {
         let db = TestDb::new("arrays").await;
         let mut pool = db.pool.clone();
 
-        let result = pool
-            .esql()
-            .execute(("SELECT ?", vec![1i32, 2, 3]))
-            .await;
+        let result = pool.esql().execute(("SELECT ?", vec![1i32, 2, 3])).await;
 
         assert!(matches!(
             result,

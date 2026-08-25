@@ -10,15 +10,21 @@ members = [
 ]
 
 [workspace.package]
+categories = [ "asynchronous", "database" ]
 edition = "2024"
+keywords = [ "database", "mysql", "postgres", "query-builder", "sql" ]
 license = "MIT"
-version = "0.3.1"
+repository = "https://github.com/MDM23/esql"
+rust-version = "1.85"
+version = "0.4.0"
 
 [workspace.dependencies]
-esql = { path = "." }
-esql-core = { path = "crates/core" }
-esql-macros = { path = "crates/macros" }
-esql-migrate = { path = "crates/migrate" }
+# The version has to be repeated here: `cargo publish` rejects a path
+# dependency without one, and it cannot be inherited inside a dependency.
+esql = { path = ".", version = "0.4.0" }
+esql-core = { path = "crates/core", version = "0.4.0" }
+esql-macros = { path = "crates/macros", version = "0.4.0" }
+esql-migrate = { path = "crates/migrate", version = "0.4.0" }
 
 base16ct = { version = "0.3.0", features = ["alloc"] }
 bb8 = "0.9"
@@ -33,6 +39,7 @@ rust_decimal = { version = "1.41", default-features = false, features = ["std"] 
 serde_json = "1.0"
 sha2 = "0.11.0-rc.3"
 syn = { version = "2.0", features = ["full"] }
+thiserror = "2.0"
 time = "0.3"
 tokio = { version = "1.48.0", features = ["full"] }
 tokio-postgres = "0.7.15"
@@ -50,8 +57,14 @@ with-uuid-1 = [ "esql-core/with-uuid-1" ]
 
 [package]
 name = "esql"
+description = "A thin, composable SQL query builder for tokio-postgres and mysql_async"
+readme = "README.md"
+categories.workspace = true
 edition.workspace = true
+keywords.workspace = true
 license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
 version.workspace = true
 
 # Every feature can be enabled at once, so docs cover the whole surface.
