@@ -1,4 +1,4 @@
-use crate::{Error, FromRowError, Query, Value, dialect::Dialect};
+use crate::{Error, FromRowError, Query, Value, dialect::Dialect, trace};
 
 #[cfg(feature = "mysql")]
 mod mysql;
@@ -58,11 +58,14 @@ impl<'c, C: Esql + ?Sized> EsqlDriver<'c, C> {
         query: impl Into<Query<'q>>,
     ) -> impl Future<Output = Result<u64, Error<C::Error>>> + '_ {
         let built = query.into().build::<C::Dialect>();
+        let span = trace::statement::<C::Dialect>("execute", &built);
 
-        async move {
+        trace::instrument(span, async move {
             let (sql, params) = built?;
-            self.0._esql_execute(sql, params).await
-        }
+            let rows = self.0._esql_execute(sql, params).await?;
+            trace::affected_rows(rows);
+            Ok(rows)
+        })
     }
 
     /// Execute a query and return all result rows.
@@ -74,11 +77,14 @@ impl<'c, C: Esql + ?Sized> EsqlDriver<'c, C> {
         T: FromRow,
     {
         let built = query.into().build::<C::Dialect>();
+        let span = trace::statement::<C::Dialect>("query", &built);
 
-        async move {
+        trace::instrument(span, async move {
             let (sql, params) = built?;
-            self.0._esql_query(sql, params).await
-        }
+            let rows = self.0._esql_query(sql, params).await?;
+            trace::returned_rows(rows.len());
+            Ok(rows)
+        })
     }
 
     /// Execute a query and return the first row, or error with
@@ -91,15 +97,16 @@ impl<'c, C: Esql + ?Sized> EsqlDriver<'c, C> {
         T: FromRow,
     {
         let built = query.into().build::<C::Dialect>();
+        let span = trace::statement::<C::Dialect>("query", &built);
 
-        async move {
+        trace::instrument(span, async move {
             let (sql, params) = built?;
 
             self.0
                 ._esql_first(sql, params)
                 .await?
                 .ok_or_else(|| FromRowError::NoRows.into())
-        }
+        })
     }
 
     /// Execute a query and return the first row, or [None] where the result
@@ -112,11 +119,12 @@ impl<'c, C: Esql + ?Sized> EsqlDriver<'c, C> {
         T: FromRow,
     {
         let built = query.into().build::<C::Dialect>();
+        let span = trace::statement::<C::Dialect>("query", &built);
 
-        async move {
+        trace::instrument(span, async move {
             let (sql, params) = built?;
             self.0._esql_first(sql, params).await
-        }
+        })
     }
 }
 

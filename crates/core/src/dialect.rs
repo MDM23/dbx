@@ -7,6 +7,10 @@ use std::fmt::Write as _;
 /// is a property of the connection it runs on. Enabling both drivers in one
 /// binary is therefore fine.
 pub trait Dialect {
+    /// What this database is called in a trace, following the OpenTelemetry
+    /// `db.system.name` registry.
+    const NAME: &'static str = "other_sql";
+
     /// Append the placeholder for a parameter at the given 1-based position.
     fn placeholder(index: usize, out: &mut String);
 
@@ -23,6 +27,8 @@ pub trait Dialect {
 pub struct Postgres;
 
 impl Dialect for Postgres {
+    const NAME: &'static str = "postgresql";
+
     fn placeholder(index: usize, out: &mut String) {
         let _ = write!(out, "${index}");
     }
@@ -40,6 +46,8 @@ impl Dialect for Postgres {
 pub struct MySql;
 
 impl Dialect for MySql {
+    const NAME: &'static str = "mysql";
+
     fn placeholder(_: usize, out: &mut String) {
         out.push('?');
     }

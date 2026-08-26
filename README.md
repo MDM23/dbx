@@ -73,6 +73,25 @@ esql::migrate::embed_migrations!("migrations")
     .await?;
 ```
 
+## Tracing
+
+With the `tracing` feature, every statement gets a `DEBUG` span carrying the
+SQL, the operation and the row count, under OpenTelemetry's `db.*` field names.
+The parameters are not recorded: `Trusted` keeps user data out of the SQL
+string, which is what makes the string itself safe to export.
+
+A `fmt` subscriber stays quiet, even at `DEBUG`, because those spans contain no
+events. They surface in a trace collector, or in `fmt` once you ask for
+`FmtSpan::CLOSE`. What does print is migration progress, at `INFO`:
+
+```text
+INFO migrate: running 2 pending migrations pending=2
+INFO migrate:migration{version=1 name=create_users}: running migration 1 create_users
+```
+
+Migrations nest, so the statement spans of a migration hang under it, and so
+does the session lock that a stuck boot is usually waiting on.
+
 ## Features
 
 | Feature | Adds |
@@ -81,6 +100,7 @@ esql::migrate::embed_migrations!("migrations")
 | `mysql` | The `mysql_async` driver |
 | `derive` | `#[derive(FromRow)]` |
 | `migrate` | `embed_migrations!` and the migrator |
+| `tracing` | Spans and migration progress through the `tracing` crate |
 | `with-rust_decimal-1` | `NUMERIC` and `DECIMAL` as `rust_decimal::Decimal` |
 | `with-serde_json-1` | `JSON` and `JSONB` as `serde_json::Value` |
 | `with-time-0_3` | Date and time columns as `time` types |

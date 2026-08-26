@@ -97,6 +97,7 @@ impl Migrator {
     /// something that holds one connection for the whole call: a client or a
     /// transaction, not a pool that hands out a different connection per
     /// statement.
+    #[cfg_attr(feature = "tracing", tracing::instrument(name = "migrate", skip_all))]
     pub async fn run<D>(self, db: &mut EsqlDriver<'_, D>) -> Result<(), esql_core::Error<D::Error>>
     where
         D: Esql,
@@ -119,6 +120,17 @@ impl Migrator {
         Self::ensure_table(db).await?;
 
         let current = Self::get_applied_migrations(db).await?;
+
+        #[cfg(feature = "tracing")]
+        match self
+            .migrations
+            .iter()
+            .filter(|m| !current.iter().any(|a| a.version == m.version))
+            .count()
+        {
+            0 => tracing::info!("nothing to migrate"),
+            pending => tracing::info!(pending, "running {pending} pending migrations"),
+        }
 
         for migration in &self.migrations {
             match current.iter().find(|a| a.version == migration.version) {
@@ -172,6 +184,14 @@ impl Migrator {
         .await
     }
 
+    #[cfg_attr(
+        feature = "tracing",
+        tracing::instrument(
+            name = "migration",
+            skip_all,
+            fields(version = migration.version, name = migration.name),
+        )
+    )]
     async fn apply_migration<D>(
         db: &mut EsqlDriver<'_, D>,
         migration: &Migration,
@@ -179,6 +199,9 @@ impl Migrator {
     where
         D: Esql,
     {
+        #[cfg(feature = "tracing")]
+        tracing::info!("running migration {} {}", migration.version, migration.name);
+
         for statement in split_statements(&migration.sql) {
             db.execute(Trusted::unchecked(statement)).await?;
         }

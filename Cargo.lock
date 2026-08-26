@@ -486,6 +486,7 @@ dependencies = [
  "thiserror",
  "time",
  "tokio-postgres",
+ "tracing",
  "uuid",
 ]
 
@@ -507,6 +508,7 @@ dependencies = [
  "esql-core",
  "regex",
  "sha2 0.11.0",
+ "tracing",
 ]
 
 [[package]]

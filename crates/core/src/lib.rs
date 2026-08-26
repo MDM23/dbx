@@ -16,4 +16,5 @@ mod driver;
 mod error;
 mod lexer;
 mod query;
+mod trace;
 mod value;
